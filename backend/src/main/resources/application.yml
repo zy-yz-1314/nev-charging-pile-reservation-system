@@ -1,0 +1,65 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: powerqueue
+  # ============ MySQL 数据源 ============
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/powerqueue?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: "your_mysql_password"   # ← 启动前改成你本机的 MySQL 密码
+  # ============ Redis ============
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # password:               # 如有密码请填写
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+# ============ MyBatis-Plus ============
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 控制台打印 SQL,便于演示与排查(生产可关闭)
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.powerqueue.entity
+
+# ============ 业务自定义配置 ============
+powerqueue:
+  jwt:
+    secret: your_jwt_secret_key_please_change_to_a_random_string_min_48_bytes   # ← 启动前改成你自己的随机密钥(HS384 要求 ≥ 48 字节)
+    expire: 86400000            # token 有效期 24 小时(毫秒)
+    header: Authorization
+  reservation:
+    lock-wait-seconds: 3        # 抢桩获取分布式锁的最大等待时间
+    lock-lease-seconds: 5       # 锁租约(自动释放时间)
+  cache:
+    pile-ttl-seconds: 30        # 充电桩状态缓存过期时间
+
+logging:
+  level:
+    com.powerqueue: info

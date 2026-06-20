@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.powerqueue.mapper.ReservationMapper">
+
+    <!-- 各订单状态数量 -->
+    <select id="countByStatus" resultType="map">
+        SELECT status, COUNT(*) AS cnt
+        FROM reservation
+        WHERE deleted = 0
+        GROUP BY status
+    </select>
+
+    <!-- 近 N 天每日营收与订单量趋势(仅统计已完成订单) -->
+    <select id="revenueTrend" resultType="map">
+        SELECT DATE_FORMAT(create_time, '%Y-%m-%d') AS date,
+               COUNT(*)                             AS orders,
+               IFNULL(SUM(amount), 0)               AS revenue
+        FROM reservation
+        WHERE deleted = 0
+          AND status = 'FINISHED'
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d')
+        ORDER BY date ASC
+    </select>
+
+    <!-- 汇总指标 -->
+    <select id="summary" resultType="map">
+        SELECT COUNT(*)                                                                              AS totalOrders,
+               IFNULL(SUM(CASE WHEN DATE(create_time) = CURDATE() THEN 1 ELSE 0 END), 0)            AS todayOrders,
+               IFNULL(SUM(CASE WHEN status = 'FINISHED' THEN amount ELSE 0 END), 0)                 AS totalRevenue,
+               IFNULL(SUM(CASE WHEN status = 'FINISHED' AND DATE(create_time) = CURDATE()
+                                   THEN amount ELSE 0 END), 0)                                       AS todayRevenue
+        FROM reservation
+        WHERE deleted = 0
+    </select>
+
+    <!-- 管理后台订单分页(多表 join);分页插件自动追加 LIMIT -->
+    <select id="pageReservationVO" resultType="com.powerqueue.vo.ReservationVO">
+        SELECT r.id,
+               r.order_no,
+               r.user_id,
+               u.nickname   AS user_name,
+               r.pile_id,
+               p.pile_no,
+               p.type       AS pile_type,
+               p.power,
+               p.price,
+               r.station_id,
+               s.name       AS station_name,
+               r.reserve_time,
+               r.start_time,
+               r.end_time,
+               r.duration,
+               r.power_used,
+               r.amount,
+               r.status
+        FROM reservation r
+                 LEFT JOIN user u ON u.id = r.user_id
+                 LEFT JOIN charging_pile p ON p.id = r.pile_id
+                 LEFT JOIN station s ON s.id = r.station_id
+        WHERE r.deleted = 0
+        <if test="status != null and status != ''">
+            AND r.status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (r.order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.nickname LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY r.create_time DESC
+    </select>
+
+</mapper>

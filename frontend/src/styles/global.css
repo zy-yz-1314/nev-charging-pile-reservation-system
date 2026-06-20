@@ -1,0 +1,166 @@
+/* =========================================================
+   PowerQueue 全局样式
+   ========================================================= */
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  color: var(--pq-text);
+  background:
+    radial-gradient(1200px 620px at 82% -12%, rgba(42, 214, 255, 0.12), transparent 60%),
+    radial-gradient(960px 520px at -5% 110%, rgba(20, 224, 160, 0.12), transparent 55%),
+    var(--pq-bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 玻璃态卡片 */
+.pq-glass {
+  background: var(--pq-surface);
+  border: 1px solid var(--pq-border);
+  border-radius: var(--pq-radius);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.pq-glass-hover {
+  transition: transform 0.4s var(--pq-ease), border-color 0.4s var(--pq-ease),
+    box-shadow 0.4s var(--pq-ease);
+}
+.pq-glass-hover:hover {
+  transform: translateY(-4px);
+  border-color: var(--pq-border-strong);
+  box-shadow: var(--pq-shadow);
+}
+
+/* 渐变品牌文字 */
+.pq-gradient-text {
+  background: linear-gradient(90deg, var(--pq-primary), var(--pq-primary-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 发光脉冲(用于空闲可抢的充电桩) */
+@keyframes pq-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(20, 224, 160, 0);
+  }
+  50% {
+    box-shadow: 0 0 16px 2px rgba(20, 224, 160, 0.5);
+  }
+}
+.pq-pulse {
+  animation: pq-pulse 2.2s ease-in-out infinite;
+}
+
+/* 浮入动画 */
+@keyframes pq-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.pq-fade-up {
+  animation: pq-fade-up 0.5s var(--pq-ease) both;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用工具类 */
+.pq-row {
+  display: flex;
+  align-items: center;
+}
+.pq-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pq-muted {
+  color: var(--pq-text-dim);
+}
+.pq-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 让 Element 卡片/弹窗透出玻璃质感 */
+.el-card,
+.el-dialog,
+.el-drawer {
+  border-radius: var(--pq-radius) !important;
+}
+
+/* 管理后台表格融入玻璃卡 */
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-border-color: var(--pq-border);
+  --el-table-row-hover-bg-color: rgba(255, 255, 255, 0.05);
+  background: transparent;
+}
+.el-table th.el-table__cell {
+  font-weight: 700;
+  color: var(--pq-text-dim);
+}
+
+/* 管理后台通用页面工具条 + 卡片 */
+.pq-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.pq-page-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+.pq-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pq-card {
+  padding: 18px 20px;
+}
+.pq-pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}

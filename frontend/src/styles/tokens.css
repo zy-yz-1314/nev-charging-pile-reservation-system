@@ -1,0 +1,62 @@
+/* =========================================================
+   PowerQueue 设计令牌 —— 深色科技 + 能源主题
+   ========================================================= */
+:root {
+  /* 背景层次 */
+  --pq-bg: #080b12;
+  --pq-bg-soft: #0d141f;
+  --pq-surface: rgba(255, 255, 255, 0.045);
+  --pq-surface-2: rgba(255, 255, 255, 0.07);
+  --pq-border: rgba(255, 255, 255, 0.09);
+  --pq-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* 文本 */
+  --pq-text: #e8eef5;
+  --pq-text-dim: #8a98ab;
+  --pq-text-faint: #5b6675;
+
+  /* 品牌色:能源绿 → 电光青 */
+  --pq-primary: #14e0a0;
+  --pq-primary-2: #2ad6ff;
+  --pq-accent: #7c6bff;
+
+  /* 语义/状态色 */
+  --pq-idle: #14e0a0;
+  --pq-charging: #2ad6ff;
+  --pq-reserved: #ffb02e;
+  --pq-fault: #ff5d6c;
+  --pq-warning: #ffb02e;
+  --pq-danger: #ff5d6c;
+
+  /* 形状与动效 */
+  --pq-radius: 16px;
+  --pq-radius-sm: 10px;
+  --pq-radius-lg: 22px;
+  --pq-glow: 0 0 22px rgba(20, 224, 160, 0.35);
+  --pq-glow-cyan: 0 0 22px rgba(42, 214, 255, 0.35);
+  --pq-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --pq-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Element Plus 暗色主题对齐品牌色 */
+html.dark {
+  --el-color-primary: #14e0a0;
+  --el-color-primary-light-3: #3ae6b4;
+  --el-color-primary-light-5: #7eeecf;
+  --el-color-primary-light-7: #b6f5e3;
+  --el-color-primary-light-8: #d4f9ee;
+  --el-color-primary-light-9: #eafdf8;
+  --el-color-primary-dark-2: #10b884;
+
+  --el-bg-color: #0d141f;
+  --el-bg-color-page: #080b12;
+  --el-bg-color-overlay: #0f1825;
+  --el-text-color-primary: #e8eef5;
+  --el-text-color-regular: #c2ccd9;
+  --el-text-color-secondary: #8a98ab;
+  --el-border-color: rgba(255, 255, 255, 0.10);
+  --el-border-color-light: rgba(255, 255, 255, 0.08);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.06);
+  --el-fill-color-blank: #0f1825;
+  --el-fill-color-light: rgba(255, 255, 255, 0.04);
+}

@@ -1,0 +1,28 @@
+# ===== 构建产物 =====
+**/target/
+**/dist/
+**/build/
+
+# ===== 依赖 =====
+**/node_modules/
+
+# ===== IDE / 编辑器 =====
+.idea/
+**/.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ===== 本地私有配置(放真实密码/密钥,切勿提交)=====
+**/application-local.yml
+**/application-local.yaml
+**/*.local
+
+# ===== 日志 / 系统 =====
+*.log
+logs/
+.DS_Store
+Thumbs.db
