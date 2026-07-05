@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
@@ -30,7 +31,12 @@ public class RedisConfig {
         om.registerModule(new JavaTimeModule());
         om.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         // 写入类型信息,保证 List/对象 反序列化时能还原具体类型
-        om.activateDefaultTyping(LaissezFaireSubTypeValidator.instance,
+        om.activateDefaultTyping(BasicPolymorphicTypeValidator.builder()
+                        .allowIfBaseType("com.powerqueue.")
+                        .allowIfBaseType("java.lang.")
+                        .allowIfBaseType("java.util.")
+                        .allowIfBaseType("java.math.")
+                        .build(),
                 ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(om);
 

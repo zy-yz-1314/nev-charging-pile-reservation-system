@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -8,16 +8,35 @@ import {
   finishChargingApi,
   cancelReservationApi,
 } from '@/api/reservation'
+import { queueConfirmApi } from '@/api/queue'
+import { ws } from '@/utils/websocket'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
+let unsubWs = null
 
 const TAG = {
   PENDING: 'warning',
+  QUEUED: '',
+  WAITING_CONFIRM: 'danger',
   CHARGING: 'primary',
   FINISHED: 'success',
   CANCELLED: 'info',
+}
+
+// 倒计时(WAITING_CONFIRM 状态下 10 分钟窗口)
+const now = ref(Date.now())
+let ticker = null
+
+const confirmCountdown = (r) => {
+  if (r.status !== 'WAITING_CONFIRM' || !r.reserveTime) return null
+  const deadline = new Date(r.reserveTime).getTime() + 10 * 60 * 1000
+  const left = Math.max(0, Math.floor((deadline - now.value) / 1000))
+  if (left <= 0) return '已超时'
+  const m = Math.floor(left / 60)
+  const s = left % 60
+  return `剩余 ${m}:${String(s).padStart(2, '0')}`
 }
 
 const load = async () => {
@@ -43,17 +62,29 @@ const finish = async (r) => {
   load()
 }
 const cancel = async (r) => {
-  try {
-    await ElMessageBox.confirm('确认取消该预约?', '提示', { type: 'warning' })
-  } catch (_) {
-    return
-  }
+  try { await ElMessageBox.confirm('确认取消该预约?', '提示', { type: 'warning' }) } catch (_) { return }
   await cancelReservationApi(r.id)
   ElMessage.success('已取消预约')
   load()
 }
+const confirmQiuyue = async (r) => {
+  try { await ElMessageBox.confirm('确认立即占位充电?', '轮到你啦', { type: 'success', confirmButtonText: '⚡ 确认占位' }) } catch (_) { return }
+  try { await queueConfirmApi(r.pileId); ElMessage.success('占位成功!'); load() } catch (e) { /* 已提示 */ }
+}
 
-onMounted(load)
+// 监听 WebSocket: QUEUE_TURN 定向消息(仅刷新列表,toast 由 UserLayout 全局处理)
+const onWsQueue = () => { load() }
+
+onMounted(() => {
+  load()
+  ws.connect()
+  unsubWs = ws.on('QUEUE_TURN', onWsQueue)
+  ticker = setInterval(() => { now.value = Date.now() }, 1000)
+})
+onUnmounted(() => {
+  if (unsubWs) unsubWs()
+  clearInterval(ticker)
+})
 </script>
 
 <template>
@@ -97,11 +128,25 @@ onMounted(load)
             <span class="a-num">¥{{ r.amount }}</span>
             <span class="a-lbl">{{ r.powerUsed }} 度 · {{ r.duration }} 分钟</span>
           </div>
+          <!-- 排队中 -->
+          <div v-else-if="r.status === 'QUEUED'" class="queue-hint">
+            <span class="qh">📋 排队中</span>
+          </div>
+          <!-- 轮到,待确认 -->
+          <div v-else-if="r.status === 'WAITING_CONFIRM'" class="confirm-hint">
+            <span class="ch-urgent">⚡ 轮到你了!</span>
+            <span class="ch-countdown" v-if="confirmCountdown(r)">{{ confirmCountdown(r) }}</span>
+          </div>
           <div class="r-actions">
             <template v-if="r.status === 'PENDING'">
               <el-button type="primary" size="small" @click="start(r)">开始充电</el-button>
               <el-button size="small" @click="cancel(r)">取消</el-button>
             </template>
+            <template v-else-if="r.status === 'WAITING_CONFIRM'">
+              <el-button type="success" size="small" @click="confirmQiuyue(r)">⚡ 确认占位</el-button>
+              <el-button size="small" @click="cancel(r)">放弃</el-button>
+            </template>
+            <el-button v-else-if="r.status === 'QUEUED'" size="small" @click="cancel(r)">退出排队</el-button>
             <el-button v-else-if="r.status === 'CHARGING'" type="success" size="small" @click="finish(r)">
               结束充电
             </el-button>
@@ -157,6 +202,14 @@ onMounted(load)
 .r-card.pending .bar { background: var(--pq-reserved); }
 .r-card.charging .bar { background: var(--pq-charging); }
 .r-card.finished .bar { background: var(--pq-idle); }
+.r-card.cancelled .bar { background: var(--pq-text-faint); }
+.r-card.queued .bar { background: var(--pq-warning); }
+.r-card.waiting_confirm .bar { background: var(--pq-danger); animation: pq-pulse 1s infinite; }
+.queue-hint { text-align: right; }
+.queue-hint .qh { font-weight: 700; color: var(--pq-warning); font-size: 14px; }
+.confirm-hint { text-align: right; }
+.confirm-hint .ch-urgent { display: block; font-weight: 800; color: var(--pq-danger); font-size: 15px; }
+.confirm-hint .ch-countdown { display: block; font-size: 12px; color: var(--pq-text-dim); margin-top: 2px; }
 .r-card.cancelled .bar { background: var(--pq-text-faint); }
 .r-main {
   flex: 1;

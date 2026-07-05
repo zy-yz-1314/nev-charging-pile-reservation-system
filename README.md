@@ -105,8 +105,8 @@ npm run dev        # 默认 http://localhost:5173,已配置 /api 代理到后端
 ### 5. 登录
 | 角色 | 账号 | 密码 |
 |------|------|------|
-| 管理员 | `admin` | `123456` |
-| 车主 | `user` | `123456` |
+| 管理员 | `admin` | 见环境变量 `POWERQUEUE_DEMO_PASSWORD` |
+| 车主 | `user` | 见环境变量 `POWERQUEUE_DEMO_PASSWORD` |
 
 ---
 

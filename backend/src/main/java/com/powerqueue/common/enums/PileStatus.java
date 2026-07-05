@@ -12,7 +12,8 @@ public enum PileStatus {
     IDLE("空闲"),
     RESERVED("已预约"),
     CHARGING("充电中"),
-    FAULT("故障");
+    FAULT("故障"),
+    QUEUED("排队中");
 
     private final String desc;
 

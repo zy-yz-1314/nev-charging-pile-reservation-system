@@ -58,7 +58,7 @@ public class AdminUserController {
     @PutMapping("/{id}/reset-password")
     public Result<Void> resetPassword(@PathVariable Long id) {
         userService.resetPassword(id);
-        return Result.success("密码已重置为 123456", null);
+        return Result.success("密码已重置,请提醒用户及时修改", null);
     }
 
     @DeleteMapping("/{id}")

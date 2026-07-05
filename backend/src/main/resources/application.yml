@@ -13,7 +13,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/powerqueue?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
-    password: "your_mysql_password"   # ← 启动前改成你本机的 MySQL 密码
+    password: ${MYSQL_PASSWORD:}   # 环境变量注入,启动前必须设置
   # ============ Redis ============
   data:
     redis:
@@ -51,7 +51,7 @@ mybatis-plus:
 # ============ 业务自定义配置 ============
 powerqueue:
   jwt:
-    secret: your_jwt_secret_key_please_change_to_a_random_string_min_48_bytes   # ← 启动前改成你自己的随机密钥(HS384 要求 ≥ 48 字节)
+    secret: ${POWERQUEUE_JWT_SECRET:}  # 启动前设环境变量,长度≥48字节;不设则生成token时抛异常   # ← 启动前改成你自己的随机密钥(HS384 要求 ≥ 48 字节)
     expire: 86400000            # token 有效期 24 小时(毫秒)
     header: Authorization
   reservation:
@@ -59,6 +59,79 @@ powerqueue:
     lock-lease-seconds: 5       # 锁租约(自动释放时间)
   cache:
     pile-ttl-seconds: 30        # 充电桩状态缓存过期时间
+
+  # ============ 演示环境账号密码 ============
+  demo:
+    default-password: ${POWERQUEUE_DEMO_PASSWORD:powerqueue_demo_2026}
+
+  # ============ L1 智能匹配推荐 ============
+  recommend:
+    top-n: 5                    # 默认返回 Top-N 桩
+    distance-cache-ttl-seconds: 600   # 地图距离缓存(省钱,避免高频调外部 API)
+  # ============ L1 等待队列 ============
+  queue:
+    confirm-window-seconds: 600      # 轮到后的 10 分钟确认占位窗口
+    avg-duration-window-days: 7      # 单桩平均充电时长的历史统计窗口
+    timeout-cron: "0 */1 * * * ?"    # 每 1 分钟扫描超时未确认占位,自动让位并轮换队首
+  # ============ L2 动态定价 ============
+  pricing:
+    valley-start: "00:00"
+    valley-end:   "08:00"
+    peak-start:   "17:00"
+    peak-end:     "21:00"
+    valley-coeff: 0.70          # 谷时 0-8 点
+    flat-coeff:   1.00          # 平段
+    peak-coeff:   1.50          # 峰时 17-21 点
+    high-idle-coeff: 0.90       # 空闲率 >50% 引流
+    low-idle-coeff:  1.30       # 空闲率 <20% 分流
+    hysteresis-pct: 5           # 阈值边界滞后区(%),防价格震荡
+  # ============ L2 需求预测 ============
+  forecast:
+    moving-window-weeks: 4      # 移动平均窗口(周)
+    green-threshold: 50         # 占用率 <50% 宽松
+    red-threshold: 80           # 占用率 >80% 高峰
+    cron: "0 30 1 * * ?"        # 每天 01:30 预计算
+  # ============ L3 充电计划向导 ============
+  charge-plan:
+    cron: "0 */5 * * * ?"       # 每 5 分钟扫描到点计划
+    low-battery-kwh: 10         # 漏充提醒阈值电量
+  # ============ L3 WebSocket ============
+  ws:
+    heartbeat-seconds: 30
+    offline-ttl-days: 7
+  # ============ L4 DeepSeek LLM 助手 ============
+  deepseek:
+    base-url: https://api.deepseek.com/v1
+    api-key: ${DEEPSEEK_API_KEY:}    # 走环境变量,绝不硬编码;留空则自动降级
+    model: deepseek-chat
+    stage1-timeout-ms: 3000
+    stage2-timeout-ms: 3000
+    rate-limit-per-minute: 10
+
+# ============ Resilience4j 熔断配置(DeepSeek) ============
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 6s
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        permitted-number-of-calls-in-half-open-state: 3
+    instances:
+      deepseek:
+        base-config: default
+  ratelimiter:
+    configs:
+      default:
+        limit-for-period: 10
+        limit-refresh-period: 1m
+        timeout-duration: 0
+    instances:
+      deepseek:
+        base-config: default
 
 logging:
   level:

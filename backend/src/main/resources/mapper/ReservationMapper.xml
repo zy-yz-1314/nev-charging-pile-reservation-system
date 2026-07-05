@@ -70,4 +70,31 @@
         ORDER BY r.create_time DESC
     </select>
 
+    <!-- 某桩近 N 天已完成订单的平均充电时长(分钟),用于排队等待预估 -->
+    <select id="avgDurationMinutes" resultType="java.lang.Integer">
+        SELECT ROUND(AVG(duration))
+        FROM reservation
+        WHERE deleted = 0
+          AND pile_id = #{pileId}
+          AND status = 'FINISHED'
+          AND duration > 0
+          AND end_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+    </select>
+
+    <!-- 近 N 周已完成订单按「星期 × 小时」聚合(L2 需求预测数据源) -->
+    <!-- WEEKDAY():0=周一..6=周日 → +1 得 ISO 1=周一;移动平均 = cnt / 不同日期数 -->
+    <select id="hourlyLoadSamples" resultType="map">
+        SELECT r.station_id                       AS stationId,
+               WEEKDAY(r.start_time) + 1          AS dow,
+               HOUR(r.start_time)                 AS hr,
+               COUNT(*)                           AS cnt,
+               COUNT(DISTINCT DATE(r.start_time)) AS distinctDays
+        FROM reservation r
+        WHERE r.deleted = 0
+          AND r.status = 'FINISHED'
+          AND r.start_time IS NOT NULL
+          AND r.start_time >= DATE_SUB(CURDATE(), INTERVAL #{weeks} WEEK)
+        GROUP BY r.station_id, dow, hr
+    </select>
+
 </mapper>

@@ -10,6 +10,8 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+import jakarta.annotation.PostConstruct;
+
 /**
  * JWT 工具:基于 jjwt 0.12.x。
  */
@@ -21,6 +23,14 @@ public class JwtUtil {
 
     @Value("${powerqueue.jwt.expire}")
     private long expire;
+
+    @PostConstruct
+    public void validate() {
+        if (secret == null || secret.isBlank() || secret.contains("please_change")) {
+            throw new IllegalStateException(
+                    "JWT secret 未设置! 请设环境变量 POWERQUEUE_JWT_SECRET (长度≥48字节随机字符串)");
+        }
+    }
 
     private SecretKey getKey() {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));

@@ -75,12 +75,12 @@ const toggleStatus = async (row) => {
 }
 const resetPwd = async (row) => {
   try {
-    await ElMessageBox.confirm(`将「${row.username}」密码重置为 123456?`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(`将「${row.username}」密码重置为系统默认密码?`, '提示', { type: 'warning' })
   } catch (_) {
     return
   }
   await adminUserResetPwdApi(row.id)
-  ElMessage.success('密码已重置为 123456')
+  ElMessage.success('密码已重置为系统默认密码')
 }
 const remove = async (row) => {
   try {
@@ -170,7 +170,7 @@ onMounted(load)
           <el-input v-model="form.username" :disabled="!!editId" placeholder="登录账号" />
         </el-form-item>
         <el-form-item v-if="!editId" label="密码">
-          <el-input v-model="form.password" placeholder="留空默认 123456" />
+          <el-input v-model="form.password" placeholder="留空则使用系统默认密码" />
         </el-form-item>
         <el-form-item label="昵称">
           <el-input v-model="form.nickname" />

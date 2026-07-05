@@ -28,7 +28,17 @@ public enum ResultCode {
     RESERVATION_NOT_FOUND(2004, "预约记录不存在"),
     DUPLICATE_RESERVATION(2005, "您有正在进行的预约,请勿重复抢桩"),
     RESERVATION_STATUS_ERROR(2006, "当前订单状态不允许该操作"),
-    GRAB_BUSY(2007, "当前抢桩人数过多,请稍后再试");
+    GRAB_BUSY(2007, "当前抢桩人数过多,请稍后再试"),
+
+    // ===== L1 等待队列 =====
+    PILE_QUEUED(2008, "充电桩已满,已为您加入等待队列"),
+    QUEUE_FULL(2009, "排队人数过多,请稍后再试"),
+    CONFIRM_TIMEOUT(2010, "确认超时,已为下一位用户让位"),
+    NOT_YOUR_TURN(2011, "还未轮到您,请耐心等待"),
+
+    // ===== L4 LLM 助手 =====
+    AI_DEGRADED(3001, "智能助手暂时不可用,已为您切换到智能匹配列表"),
+    AI_RATE_LIMITED(3002, "提问过于频繁,请稍后再试");
 
     private final Integer code;
     private final String message;

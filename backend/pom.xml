@@ -22,6 +22,7 @@
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
         <redisson.version>3.27.2</redisson.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <resilience4j.version>2.2.0</resilience4j.version>
     </properties>
 
     <dependencies>
@@ -51,6 +52,21 @@
             <groupId>org.redisson</groupId>
             <artifactId>redisson</artifactId>
             <version>${redisson.version}</version>
+        </dependency>
+        <!-- WebSocket:L3 实时推送,替换前端 5 秒轮询 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <!-- Resilience4j:L4 DeepSeek 调用的熔断/限流/降级 -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>${resilience4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
         <!-- MySQL 8 驱动 -->
         <dependency>

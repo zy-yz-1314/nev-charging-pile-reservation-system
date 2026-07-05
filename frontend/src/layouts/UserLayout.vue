@@ -1,15 +1,38 @@
 <script setup>
-import { computed } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { ws } from '@/utils/websocket'
 
 const router = useRouter()
 const route = useRoute()
 const store = useUserStore()
 
+let unsubTurn = null
+let unsubRemind = null
+onMounted(() => {
+  ws.connect()
+  // === 全局 WS 监听(所有车主页面均生效) ===
+  // 轮到你了(排队轮换)
+  unsubTurn = ws.on('QUEUE_TURN', (msg) => {
+    ElMessage({ message: msg.message || '轮到你了!请在10分钟内确认占位', type: 'success', duration: 10000, showClose: true })
+  })
+  // 充电计划提醒(自动预约结果/漏充提醒)
+  unsubRemind = ws.on('PLAN_REMIND', (msg) => {
+    ElMessage({ message: msg.message || '充电计划提醒', type: 'warning', duration: 8000, showClose: true })
+  })
+})
+onUnmounted(() => {
+  if (unsubTurn) unsubTurn()
+  if (unsubRemind) unsubRemind()
+})
+
 const navs = [
+  { path: '/smart-charge', label: '智能充电', icon: 'Cpu' },
   { path: '/stations', label: '充电地图', icon: 'LocationFilled' },
+  { path: '/ai-assistant', label: 'AI 助手', icon: 'ChatDotRound' },
+  { path: '/charge-plans', label: '充电计划', icon: 'Calendar' },
   { path: '/reservations', label: '我的预约', icon: 'Tickets' },
   { path: '/profile', label: '个人中心', icon: 'User' },
 ]

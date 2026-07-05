@@ -31,6 +31,24 @@ const routes = [
         meta: { title: '站点详情' },
       },
       {
+        path: 'smart-charge',
+        name: 'smartCharge',
+        component: () => import('@/views/user/SmartCharge.vue'),
+        meta: { title: '智能充电' },
+      },
+      {
+        path: 'ai-assistant',
+        name: 'aiAssistant',
+        component: () => import('@/views/user/AiAssistant.vue'),
+        meta: { title: 'AI 助手' },
+      },
+      {
+        path: 'charge-plans',
+        name: 'chargePlans',
+        component: () => import('@/views/user/ChargePlans.vue'),
+        meta: { title: '充电计划' },
+      },
+      {
         path: 'reservations',
         name: 'myReservations',
         component: () => import('@/views/user/MyReservations.vue'),

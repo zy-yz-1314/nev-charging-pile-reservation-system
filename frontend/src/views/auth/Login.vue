@@ -37,7 +37,7 @@ const onSubmit = async () => {
 
 const fillDemo = (role) => {
   form.username = role
-  form.password = '123456'
+  form.password = ''
 }
 </script>
 
@@ -96,7 +96,7 @@ const fillDemo = (role) => {
           <el-link type="primary" :underline="false" @click="fillDemo('admin')">管理员 admin</el-link>
           <el-divider direction="vertical" />
           <el-link type="primary" :underline="false" @click="fillDemo('user')">车主 user</el-link>
-          <span class="pwd">密码均为 123456</span>
+          <span class="pwd">密码见 README / 环境变量 POWERQUEUE_DEMO_PASSWORD</span>
         </div>
 
         <div class="to-register">

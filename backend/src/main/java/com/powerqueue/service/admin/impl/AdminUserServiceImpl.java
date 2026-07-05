@@ -6,6 +6,7 @@ import com.powerqueue.common.ResultCode;
 import com.powerqueue.entity.User;
 import com.powerqueue.mapper.UserMapper;
 import com.powerqueue.service.admin.AdminUserService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -18,13 +19,16 @@ public class AdminUserServiceImpl extends ServiceImpl<UserMapper, User>
 
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${powerqueue.demo.default-password:powerqueue_demo_2026}")
+    private String demoDefaultPassword;
+
     public AdminUserServiceImpl(PasswordEncoder passwordEncoder) {
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void createUser(User user) {
-        String raw = StringUtils.hasText(user.getPassword()) ? user.getPassword() : "123456";
+        String raw = StringUtils.hasText(user.getPassword()) ? user.getPassword() : demoDefaultPassword;
         user.setPassword(passwordEncoder.encode(raw));
         if (!StringUtils.hasText(user.getRole())) {
             user.setRole("USER");
@@ -44,7 +48,7 @@ public class AdminUserServiceImpl extends ServiceImpl<UserMapper, User>
         if (u == null) {
             throw new BusinessException(ResultCode.USER_NOT_FOUND);
         }
-        u.setPassword(passwordEncoder.encode("123456"));
+        u.setPassword(passwordEncoder.encode(demoDefaultPassword));
         updateById(u);
     }
 

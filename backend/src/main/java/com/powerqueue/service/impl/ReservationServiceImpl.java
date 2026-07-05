@@ -11,14 +11,17 @@ import com.powerqueue.mapper.ChargingPileMapper;
 import com.powerqueue.mapper.ReservationMapper;
 import com.powerqueue.mapper.StationMapper;
 import com.powerqueue.service.ChargingPileService;
+import com.powerqueue.service.PileReservationSupport;
+import com.powerqueue.service.PricingService;
+import com.powerqueue.service.QueueService;
 import com.powerqueue.service.ReservationService;
+import com.powerqueue.vo.PriceCalcVO;
+import com.powerqueue.ws.ChargingEventBroadcaster;
+import com.powerqueue.vo.QueueEstimateVO;
 import com.powerqueue.vo.ReservationVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,99 +29,60 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
+
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReservationServiceImpl implements ReservationService {
 
-    private static final DateTimeFormatter ORDER_TIME_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-
     private final ReservationMapper reservationMapper;
     private final ChargingPileMapper chargingPileMapper;
     private final StationMapper stationMapper;
     private final ChargingPileService chargingPileService;
+    private final PileReservationSupport pileReservationSupport;
+    private final QueueService queueService;
+    private final PricingService pricingService;
+    private final ApplicationEventPublisher eventPublisher;
     private final RedissonClient redissonClient;
-    private final RedisTemplate<String, Object> redisTemplate;
 
     @Value("${powerqueue.reservation.lock-wait-seconds:3}")
     private long lockWaitSeconds;
-    @Value("${powerqueue.reservation.lock-lease-seconds:5}")
-    private long lockLeaseSeconds;
 
     /**
-     * 抢桩核心流程(防超卖三道防线):
-     * <ol>
-     *   <li>Redisson 分布式锁,把同一充电桩的并发请求串行化;</li>
-     *   <li>锁内重读状态 + DB 乐观锁更新(status='IDLE' AND version=?),按影响行数判定;</li>
-     *   <li>reservation(pile_id,status) 索引/唯一约束兜底。</li>
-     * </ol>
-     * 即使锁在事务提交前释放,后续请求也会因 version 已自增而更新失败,不会超卖。
+     * 抢桩:委托 {@link PileReservationSupport#grabForUser} 执行三道防线防超卖。
+     * <p>满桩时不再直接抛 PILE_NOT_IDLE,而是自动进入对应桩等待队列(L1 智能调度)。
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Long grabPile(Long pileId) {
         Long userId = UserContext.getUserId();
-
-        // 桩必须存在
-        chargingPileService.getByIdOrThrow(pileId);
-
-        // 防重复抢桩:同一用户不能有进行中的订单
-        Long active = reservationMapper.selectCount(new LambdaQueryWrapper<Reservation>()
-                .eq(Reservation::getUserId, userId)
-                .in(Reservation::getStatus, "PENDING", "CHARGING"));
-        if (active != null && active > 0) {
-            throw new BusinessException(ResultCode.DUPLICATE_RESERVATION);
-        }
-
-        RLock lock = redissonClient.getLock("lock:pile:" + pileId);
-        boolean locked = false;
         try {
-            locked = lock.tryLock(lockWaitSeconds, lockLeaseSeconds, TimeUnit.SECONDS);
-            if (!locked) {
-                throw new BusinessException(ResultCode.GRAB_BUSY);
+            return pileReservationSupport.grabForUser(userId, pileId, false);
+        } catch (BusinessException e) {
+            // 仅当"桩不空闲"时转排队;其余(重复抢桩/锁繁忙)原样上抛
+            if (ResultCode.PILE_NOT_IDLE.getCode().equals(e.getCode())) {
+                QueueEstimateVO q = queueService.enqueue(userId, pileId);
+                throw new BusinessException(ResultCode.PILE_QUEUED.getCode(),
+                        "充电桩已满,已为您加入等待队列,当前前面 " + q.getAheadCount()
+                                + " 人,预计等待 " + q.getEstimateWaitMin() + " 分钟");
             }
-            // 锁内重读最新状态
-            ChargingPile fresh = chargingPileService.getByIdOrThrow(pileId);
-            if (!"IDLE".equals(fresh.getStatus())) {
-                throw new BusinessException(ResultCode.PILE_NOT_IDLE);
-            }
-            // DB 乐观锁更新:仅当仍为 IDLE 且版本匹配时成功
-            int affected = chargingPileMapper.grabPile(pileId, fresh.getVersion());
-            if (affected == 0) {
-                throw new BusinessException(ResultCode.PILE_NOT_IDLE);
-            }
-            // 创建预约订单
-            Reservation r = new Reservation();
-            r.setOrderNo(generateOrderNo());
-            r.setUserId(userId);
-            r.setPileId(pileId);
-            r.setStationId(fresh.getStationId());
-            r.setReserveTime(LocalDateTime.now());
-            r.setStatus("PENDING");
-            r.setAmount(BigDecimal.ZERO);
-            reservationMapper.insert(r);
-
-            // 失效该站点充电桩缓存,保证实时状态
-            chargingPileService.evictStationCache(fresh.getStationId());
-            log.info("用户 {} 抢桩成功, pileId={}, orderNo={}", userId, pileId, r.getOrderNo());
-            return r.getId();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException(ResultCode.GRAB_BUSY);
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            throw e;
         }
+    }
+
+    @Override
+    public Long createQueuedReservation(Long userId, Long pileId) {
+        return pileReservationSupport.grabForUser(userId, pileId, true);
     }
 
     @Override
@@ -131,58 +95,156 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void startCharging(Long reservationId) {
         Reservation r = getOwnReservation(reservationId);
         if (!"PENDING".equals(r.getStatus())) {
             throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
         }
-        r.setStatus("CHARGING");
-        r.setStartTime(LocalDateTime.now());
-        reservationMapper.updateById(r);
-        chargingPileMapper.updateStatus(r.getPileId(), "CHARGING");
-        chargingPileService.evictStationCache(r.getStationId());
+        RLock lock = redissonClient.getLock("lock:pile:" + r.getPileId());
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException(ResultCode.GRAB_BUSY);
+            }
+            // 锁内重读,防并发覆写(与 cancel/finish/grabPile 互斥)
+            r = getOwnReservation(reservationId);
+            if (!"PENDING".equals(r.getStatus())) {
+                throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
+            }
+            // 开充时锁定动态电价快照,后续 finish 结算以此为准,用户不被中途调价影响(L2)
+            PriceCalcVO price = pricingService.calc(r.getPileId(), LocalDateTime.now());
+            r.setFinalUnitPrice(price.getFinalPrice());
+            r.setTimeCoefficient(price.getTimeCoefficient());
+            r.setLoadCoefficient(price.getLoadCoefficient());
+            r.setStatus("CHARGING");
+            r.setStartTime(LocalDateTime.now());
+            reservationMapper.updateById(r);
+            chargingPileMapper.updateStatus(r.getPileId(), "CHARGING");
+            chargingPileService.evictStationCache(r.getStationId());
+            eventPublisher.publishEvent(ChargingEventBroadcaster.pileState(
+                    r.getStationId(), r.getPileId(), "CHARGING", "充电桩开始充电"));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ResultCode.GRAB_BUSY);
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void finish(Long reservationId) {
         Reservation r = getOwnReservation(reservationId);
         if (!"CHARGING".equals(r.getStatus()) && !"PENDING".equals(r.getStatus())) {
             throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
         }
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime start = r.getStartTime() != null ? r.getStartTime() : r.getReserveTime();
-        long minutes = Math.max(1, Duration.between(start, now).toMinutes());
-
-        ChargingPile pile = chargingPileMapper.selectById(r.getPileId());
-        BigDecimal powerUsed = BigDecimal.ZERO;
-        BigDecimal amount = BigDecimal.ZERO;
-        if (pile != null) {
-            BigDecimal hours = BigDecimal.valueOf(minutes)
-                    .divide(BigDecimal.valueOf(60), 4, RoundingMode.HALF_UP);
-            powerUsed = pile.getPower().multiply(hours).setScale(2, RoundingMode.HALF_UP);
-            amount = powerUsed.multiply(pile.getPrice()).setScale(2, RoundingMode.HALF_UP);
+        RLock lock = redissonClient.getLock("lock:pile:" + r.getPileId());
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException(ResultCode.GRAB_BUSY);
+            }
+            // 锁内重读,防并发覆写(与 startCharging/cancel/grabPile 互斥)
+            r = getOwnReservation(reservationId);
+            if (!"CHARGING".equals(r.getStatus()) && !"PENDING".equals(r.getStatus())) {
+                throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
+            }
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime start = r.getStartTime() != null ? r.getStartTime() : r.getReserveTime();
+            long minutes = Math.max(1, Duration.between(start, now).toMinutes());
+            ChargingPile pile = chargingPileMapper.selectById(r.getPileId());
+            BigDecimal powerUsed = BigDecimal.ZERO;
+            BigDecimal amount = BigDecimal.ZERO;
+            if (pile != null) {
+                BigDecimal hours = BigDecimal.valueOf(minutes)
+                        .divide(BigDecimal.valueOf(60), 4, RoundingMode.HALF_UP);
+                powerUsed = pile.getPower().multiply(hours).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal unit = r.getFinalUnitPrice() != null ? r.getFinalUnitPrice() : pile.getPrice();
+                amount = powerUsed.multiply(unit).setScale(2, RoundingMode.HALF_UP);
+            }
+            r.setStatus("FINISHED");
+            r.setEndTime(now);
+            r.setDuration((int) minutes);
+            r.setPowerUsed(powerUsed);
+            r.setAmount(amount);
+            reservationMapper.updateById(r);
+            chargingPileMapper.updateStatus(r.getPileId(), "IDLE");
+            chargingPileService.evictStationCache(r.getStationId());
+            eventPublisher.publishEvent(ChargingEventBroadcaster.pileState(
+                    r.getStationId(), r.getPileId(), "IDLE", "充电桩刚刚空闲"));
+            promoteQueueHead(r.getPileId());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ResultCode.GRAB_BUSY);
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
-        r.setStatus("FINISHED");
-        r.setEndTime(now);
-        r.setDuration((int) minutes);
-        r.setPowerUsed(powerUsed);
-        r.setAmount(amount);
-        reservationMapper.updateById(r);
-
-        chargingPileMapper.updateStatus(r.getPileId(), "IDLE");
-        chargingPileService.evictStationCache(r.getStationId());
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void cancel(Long reservationId) {
         Reservation r = getOwnReservation(reservationId);
-        if (!"PENDING".equals(r.getStatus())) {
+        String s = r.getStatus();
+        if (!"PENDING".equals(s) && !"QUEUED".equals(s) && !"WAITING_CONFIRM".equals(s)) {
             throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
         }
-        r.setStatus("CANCELLED");
-        reservationMapper.updateById(r);
-        chargingPileMapper.updateStatus(r.getPileId(), "IDLE");
-        chargingPileService.evictStationCache(r.getStationId());
+        RLock lock = redissonClient.getLock("lock:pile:" + r.getPileId());
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(lockWaitSeconds, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException(ResultCode.GRAB_BUSY);
+            }
+            // 锁内重读,防并发覆写(与 startCharging/finish/grabPile 互斥)
+            r = getOwnReservation(reservationId);
+            s = r.getStatus();
+            if (!"PENDING".equals(s) && !"QUEUED".equals(s) && !"WAITING_CONFIRM".equals(s)) {
+                throw new BusinessException(ResultCode.RESERVATION_STATUS_ERROR);
+            }
+            r.setStatus("CANCELLED");
+            reservationMapper.updateById(r);
+            queueService.leave(UserContext.getUserId(), r.getPileId());
+            if ("PENDING".equals(s) || "WAITING_CONFIRM".equals(s)) {
+                chargingPileMapper.updateStatus(r.getPileId(), "IDLE");
+                chargingPileService.evictStationCache(r.getStationId());
+                eventPublisher.publishEvent(ChargingEventBroadcaster.pileState(
+                        r.getStationId(), r.getPileId(), "IDLE", "充电桩已释放"));
+                promoteQueueHead(r.getPileId());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ResultCode.GRAB_BUSY);
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 桩释放后,把队列首位用户提升为"待确认占位",并设置 10 分钟确认窗口。
+     * 队列为空则无操作。
+     */
+    private void promoteQueueHead(Long pileId) {
+        try {
+            Long nextUserId = queueService.popHead(pileId);
+            if (nextUserId == null) {
+                return;
+            }
+            // 为队首设置 10 分钟确认窗口;具体通知由 WebSocket 广播层(异步)处理
+            log.info("桩 {} 释放,队首用户 {} 已获占位确认窗口", pileId, nextUserId);
+        } catch (Exception e) {
+            // 排队轮换失败不影响主流程(充电完成)
+            log.warn("队首轮换失败 pileId={}: {}", pileId, e.getMessage());
+        }
     }
 
     // ============ 私有方法 ============
@@ -197,15 +259,6 @@ public class ReservationServiceImpl implements ReservationService {
             throw new BusinessException(ResultCode.FORBIDDEN);
         }
         return r;
-    }
-
-    /** 基于 Redis 自增序列生成全局唯一订单号 */
-    private String generateOrderNo() {
-        Long seq = redisTemplate.opsForValue().increment("order:seq");
-        if (seq == null) {
-            seq = System.currentTimeMillis();
-        }
-        return "PQ" + LocalDateTime.now().format(ORDER_TIME_FMT) + String.format("%05d", seq % 100000);
     }
 
     /** 批量回填充电桩与站点信息,避免 N+1 查询 */
@@ -257,6 +310,8 @@ public class ReservationServiceImpl implements ReservationService {
     private String statusDesc(String status) {
         return switch (status) {
             case "PENDING" -> "待充电";
+            case "QUEUED" -> "排队中";
+            case "WAITING_CONFIRM" -> "待确认占位";
             case "CHARGING" -> "充电中";
             case "FINISHED" -> "已完成";
             case "CANCELLED" -> "已取消";

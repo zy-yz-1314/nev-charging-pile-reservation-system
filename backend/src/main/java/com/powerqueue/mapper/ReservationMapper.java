@@ -29,4 +29,14 @@ public interface ReservationMapper extends BaseMapper<Reservation> {
     IPage<ReservationVO> pageReservationVO(Page<ReservationVO> page,
                                            @Param("status") String status,
                                            @Param("keyword") String keyword);
+
+    /** 某充电桩近 N 天已完成订单的平均充电时长(分钟),用于排队等待预估(L1)。 */
+    Integer avgDurationMinutes(@Param("pileId") Long pileId, @Param("days") int days);
+
+    /**
+     * 近 N 周已完成订单的「按星期 × 小时」聚合(L2 需求预测数据源)。
+     * 返回 [{stationId, dow(1=周一), hr(0-23), cnt, distinctDays}, ...],
+     * 用于移动平均 + 季节性分解。
+     */
+    List<Map<String, Object>> hourlyLoadSamples(@Param("weeks") int weeks);
 }

@@ -1,23 +1,37 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { listStationsApi } from '@/api/station'
+import { listStationsApi, stationLoadApi } from '@/api/station'
 
 const router = useRouter()
 const loading = ref(false)
 const keyword = ref('')
 const stations = ref([])
+const loads = ref({}) // stationId → StationLoadVO
 
 const load = async () => {
   loading.value = true
   try {
     const { data } = await listStationsApi(keyword.value)
     stations.value = data
+    // 异步拉取各站负载,不阻塞渲染
+    data.forEach(async (s) => {
+      try {
+        const r = await stationLoadApi(s.id)
+        loads.value[s.id] = r.data
+      } catch (_) { /* 非关键 */ }
+    })
   } catch (e) {
     /* 已全局提示 */
   } finally {
     loading.value = false
   }
+}
+
+const loadBadge = (s) => {
+  const l = loads.value[s.id]
+  if (!l) return null
+  return { level: l.loadLevel, rate: l.idleRate, coeff: l.loadCoefficient }
 }
 
 onMounted(load)
@@ -28,21 +42,26 @@ onMounted(load)
     <div class="head pq-fade-up">
       <div>
         <h1 class="title">充电<span class="pq-gradient-text">地图</span></h1>
-        <p class="subtitle">选择充电站,实时查看桩位并极速抢约</p>
+        <p class="subtitle">选择充电站,或直接智能匹配最优桩位</p>
       </div>
-      <el-input
-        v-model="keyword"
-        class="search"
-        placeholder="搜索站点名称 / 地址"
-        :prefix-icon="'Search'"
-        clearable
-        @keyup.enter="load"
-        @clear="load"
-      >
-        <template #append>
-          <el-button :icon="'Search'" @click="load">搜索</el-button>
-        </template>
-      </el-input>
+      <div class="head-actions">
+        <el-button type="primary" size="large" class="smart-btn" @click="router.push('/smart-charge')">
+          <el-icon><Cpu /></el-icon>&nbsp;⚡ 我要充电
+        </el-button>
+        <el-input
+          v-model="keyword"
+          class="search"
+          placeholder="搜索站点名称 / 地址"
+          :prefix-icon="'Search'"
+          clearable
+          @keyup.enter="load"
+          @clear="load"
+        >
+          <template #append>
+            <el-button :icon="'Search'" @click="load">搜索</el-button>
+          </template>
+        </el-input>
+      </div>
     </div>
 
     <div v-loading="loading" class="grid">
@@ -76,6 +95,18 @@ onMounted(load)
           </div>
         </div>
 
+        <div v-if="loadBadge(s)" class="load-bar">
+          <span class="ldot" :class="loadBadge(s).level.toLowerCase()"></span>
+          <span class="lrate">空闲率 {{ loadBadge(s).rate }}%</span>
+          <span class="lcoeff">×{{ Number(loadBadge(s).coeff).toFixed(2) }}</span>
+          <el-tag
+            :type="loadBadge(s).level === 'GREEN' ? 'success' : loadBadge(s).level === 'RED' ? 'danger' : 'warning'"
+            effect="dark" round size="small"
+          >
+            {{ loadBadge(s).level === 'GREEN' ? ' 🟢 宽松' : loadBadge(s).level === 'RED' ? ' 🔴 高峰' : ' 🟡 较忙' }}
+          </el-tag>
+        </div>
+
         <div class="enter">
           查看桩位 <el-icon><ArrowRightBold /></el-icon>
         </div>
@@ -95,6 +126,27 @@ onMounted(load)
   margin-bottom: 28px;
   flex-wrap: wrap;
 }
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.smart-btn {
+  font-weight: 800;
+  font-size: 16px;
+  padding: 14px 24px;
+  border: none;
+  background: linear-gradient(135deg, var(--pq-primary), var(--pq-primary-2)) !important;
+  color: #042018 !important;
+  box-shadow: var(--pq-glow);
+  border-radius: 14px;
+  white-space: nowrap;
+}
+.smart-btn:hover {
+  box-shadow: 0 0 30px rgba(20, 224, 160, 0.5);
+  transform: translateY(-2px);
+}
 .title {
   font-size: 32px;
   font-weight: 800;
@@ -105,7 +157,7 @@ onMounted(load)
   margin: 0;
 }
 .search {
-  width: 360px;
+  width: 300px;
   max-width: 100%;
 }
 .grid {
@@ -173,6 +225,27 @@ onMounted(load)
   color: var(--pq-primary);
   text-shadow: 0 0 18px rgba(20, 224, 160, 0.55);
 }
+.load-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--pq-radius-sm);
+  background: var(--pq-surface-2);
+  font-size: 12px;
+}
+.ldot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ldot.green { background: var(--pq-idle); box-shadow: 0 0 8px var(--pq-idle); }
+.ldot.yellow { background: var(--pq-warning); box-shadow: 0 0 8px var(--pq-warning); }
+.ldot.red { background: var(--pq-danger); box-shadow: 0 0 8px var(--pq-danger); }
+.lrate { font-weight: 700; color: var(--pq-text); }
+.lcoeff { color: var(--pq-text-dim); }
 .enter {
   display: flex;
   align-items: center;

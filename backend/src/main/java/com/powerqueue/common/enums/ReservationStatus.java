@@ -10,6 +10,8 @@ import lombok.Getter;
 public enum ReservationStatus {
 
     PENDING("待充电"),
+    QUEUED("排队中"),
+    WAITING_CONFIRM("待确认占位"),
     CHARGING("充电中"),
     FINISHED("已完成"),
     CANCELLED("已取消");

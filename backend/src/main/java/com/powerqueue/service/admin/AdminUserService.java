@@ -8,10 +8,10 @@ import com.powerqueue.entity.User;
  */
 public interface AdminUserService extends IService<User> {
 
-    /** 新增用户(密码加密,默认 123456) */
+    /** 新增用户(密码加密,未填则使用系统默认密码) */
     void createUser(User user);
 
-    /** 重置密码为 123456 */
+    /** 重置密码为系统默认密码 */
     void resetPassword(Long id);
 
     /** 启用/禁用 */
